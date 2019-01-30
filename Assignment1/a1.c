@@ -16,11 +16,14 @@ int main(){
 
 
     printf("enter the seed for the parent process\n");
+    //get input from user for seed
     scanf("%d", &parent_seed);
     
     srand(parent_seed);
+    //generate a random number between 5 and 9 inclusive
     num_children = rand() % 5 + 5;
 
+    
     parentpid = getpid();
     printf("My process ID id %d\n", parentpid);
 
