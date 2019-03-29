@@ -13,7 +13,7 @@ int maximumThiefInterval;
 int huntersOnPath = 0;
 int thievesOnPath = 0;
 
-bool smaugSatisfied = false;
+int smaugSatisfied = 0;//this is a bool but dumb c doesnt have them
 
 pthread_mutex_t hOP;
 pthread_mutex_t tOP;
@@ -117,7 +117,7 @@ int main(){
 	for(i = 0; i < huntersOnPath; i++){
 		sem_post(&pathHunter);
 	}
-	for(i = 0; i < theivesOnPath; i++){
+	for(i = 0; i < thievesOnPath; i++){
 		sem_post(&pathThief);
 	}
 	
@@ -144,10 +144,10 @@ void smaug(){
 	
 		printf("Smaug has been woken up\n");
 	
-		if(theivesOnPath > 0){//if there is a thief on the path it takes priority
+		if(thievesOnPath > 0){//if there is a thief on the path it takes priority
 			printf("Smaug smells a thief\n");
 			sem_wait(&smaugBusy);
-			printf("Smaug has finished a game\n")
+			printf("Smaug has finished a game\n");
 		}
 		else{//if there is a hunter
 			printf("Smaug smells a treasure hunter\n");
@@ -156,11 +156,11 @@ void smaug(){
 		}
 		
 		if(treasure <= 0 && !smaugSatisfied){
-			smaugSatisfied = true;
+			smaugSatisfied = 1;
 			printf("Smaug has no more treasure\n");
 		}
 		else if(treasure >= 80 && !smaugSatisfied){
-			smaugSatisfied = true;
+			smaugSatisfied = 1;
 			printf("Smaug has amassed 80 jewels in treasure\n");
 		}
 	}
@@ -173,8 +173,8 @@ void hunter(){
 	int huntersDefeated = 0;
 	pid_t myPID = getpid();
 	
-	printf("Treasure hunter %d wandering the valley\n", &myPID);
-	printf("Treasure hunter %d is travelling to the valley\n", &myPID);
+	printf("Treasure hunter %d wandering the valley\n", myPID);
+	printf("Treasure hunter %d is travelling to the valley\n", myPID);
 	
 	pthread_mutex_lock(&hOP);
 	huntersOnPath++;
@@ -198,27 +198,27 @@ void hunter(){
 	pthread_mutex_unlock(&hOP);
 	
 	//fight smaug
-	printf("Treasure hunter %d is fighting Smaug\n", &myPID);
+	printf("Treasure hunter %d is fighting Smaug\n", myPID);
 	
 	if((rand()%100+1) < winProb){//if wins
-		printf("Treasure hunter %d has won and recieves treasure\n", &myPID);
+		printf("Treasure hunter %d has won and recieves treasure\n", myPID);
 		treasure -= 10;
 		if(treasure < 0){
 			treasure = 0;
 		}
 		printf("Smaug has been defeated by a treasure hunter\n");
-		printf("Smaug has lost some treasure, he now has %d jewels\n", &treasure);
+		printf("Smaug has lost some treasure, he now has %d jewels\n", treasure);
 	}
 	else{//else loses
 		huntersDefeated++;
-		printf("Treasure hunter %d has been defeated and pays the price\n", &myPID);
+		printf("Treasure hunter %d has been defeated and pays the price\n", myPID);
 		treasure += 5;
 		printf("Smaug has defeated a treasure hunter\n");
-		printf("Smaug has added to his treasure, he now has %d jewels\n", &treasure);
+		printf("Smaug has added to his treasure, he now has %d jewels\n", treasure);
 	}
 	
 	if(huntersDefeated >= 4){
-		smaugSatisfied = true;
+		smaugSatisfied = 1;
 		printf("Smaug has defeated 4 treasure hunters\n");
 	}
 	//tell Smaug he can go back to sleep
@@ -231,11 +231,11 @@ void theif(){
 	int thievesDefeated = 0;
 	pid_t myPID = getpid();
 	
-	printf("Thief %d wandering the valley\n", &myPID);
-	printf("Thief %d is travelling to the valley\n", &myPID);
+	printf("Thief %d wandering the valley\n", myPID);
+	printf("Thief %d is travelling to the valley\n", myPID);
 	
 	pthread_mutex_lock(&tOP);
-	theivesOnPath++;
+	thievesOnPath++;
 	pthread_mutex_unlock(&tOP);
 	
 	//tell Smaug he can wake up as there is a visitor
@@ -251,32 +251,32 @@ void theif(){
 	}
 	
 	pthread_mutex_lock(&tOP);
-	theivesOnPath--;
+	thievesOnPath--;
 	pthread_mutex_unlock(&tOP);
 	
 	//play with smaug
-	printf("Thief %d is playing with Smaug\n", &myPID);
+	printf("Thief %d is playing with Smaug\n", myPID);
 	
 	if((rand()%100+1) < winProb){//if wins
-		printf("Thief %d has won and recieves treasure\n", &myPID);
+		printf("Thief %d has won and recieves treasure\n", myPID);
 		treasure -= 8;
 		if(treasure < 0){
 			treasure = 0;
 		}
 		printf("Smaug has been defeated by a thief\n");
-		printf("Smaug has lost some treasure, he now has %d jewels\n", &treasure);
+		printf("Smaug has lost some treasure, he now has %d jewels\n", treasure);
 	}
 	else{//else loses
 		thievesDefeated++;
-		printf("Thief %d has been defeated and pays the price\n", &myPID);
+		printf("Thief %d has been defeated and pays the price\n", myPID);
 		treasure += 20;
 		printf("Smaug has defeated a thief\n");
-		printf("Smaug has added to his treasure, he now has %d jewels\n", &treasure);
+		printf("Smaug has added to his treasure, he now has %d jewels\n", treasure);
 	}
 	
 	if(thievesDefeated >= 3){
-		smaugSatisfied = true;
-		printf("Smaug has defeated 3 thieves\n")
+		smaugSatisfied = 1;
+		printf("Smaug has defeated 3 thieves\n");
 	}
 	
 	//tell Smaug he can go back to sleep
