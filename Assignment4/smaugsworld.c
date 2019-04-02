@@ -4,6 +4,11 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <time.h> 
+#include <sys/types.h>
+#include <fcntl.h>           /* For O_* constants */
+#include <sys/stat.h>        /* For mode constants */
+#include <sys/mman.h>
+#include <sys/wait.h>
 
 int treasure = 30;
 int winProb; //probabilty a visitor will NOT be defeated, i.e. will win
@@ -19,10 +24,10 @@ pthread_mutex_t hOP;
 pthread_mutex_t tOP;
 pthread_mutex_t sS;
 
-sem_t pathHunter;
-sem_t pathThief;
-sem_t smaugSleep;
-sem_t smaugBusy;
+sem_t* pathHunter;
+sem_t* pathThief;
+sem_t* smaugSleep;
+sem_t* smaugBusy;
 
 void smaug();
 void hunter();
@@ -33,13 +38,31 @@ int main(){
     pid_t smaugpid, hunterpid, thiefpid;
     clock_t startTime, elapsedTime;
 	
-	//initialize threads
+	
+	/*not working with fork()
+	//initialize semaphores
 	int pshared = 1; //this tells the semaphore to be shared accross processes not just threads
 	int seminitval = 0;
 	sem_init(&pathHunter, pshared, seminitval);
 	sem_init(&pathThief, pshared, seminitval);
 	sem_init(&smaugSleep, pshared, seminitval);
 	sem_init(&smaugBusy, pshared, seminitval);
+	*/
+
+	pathHunter = sem_open("pH", O_CREAT, 0600, 0); 
+	pathThief = sem_open("pT", O_CREAT, 0600, 0);
+	smaugSleep = sem_open("sS", O_CREAT, 0600, 0);
+	smaugBusy = sem_open("sB", O_CREAT, 0600, 0);
+	
+	
+	//initialize semaphores
+	int pshared = 1; //this tells the semaphore to be shared accross processes not just threads
+	int seminitval = 0;
+	sem_init(pathHunter, pshared, seminitval);
+	sem_init(pathThief, pshared, seminitval);
+	sem_init(smaugSleep, pshared, seminitval);
+	sem_init(smaugBusy, pshared, seminitval);
+	
 	
 	//initalize mutexes
 	pthread_mutex_init(&hOP, NULL);
@@ -66,6 +89,7 @@ int main(){
         abort();
     }
 	else if(smaugpid == 0){
+
 		//All work done by Smaug here
 		smaug();
 		exit(0);
@@ -115,43 +139,46 @@ int main(){
     }
 	
 	for(i = 0; i < huntersOnPath; i++){
-		sem_post(&pathHunter);
+		sem_post(pathHunter);
 	}
 	for(i = 0; i < thievesOnPath; i++){
-		sem_post(&pathThief);
+		sem_post(pathThief);
 	}
 	
 	pthread_mutex_destroy(&hOP);
 	pthread_mutex_destroy(&tOP);
 	pthread_mutex_destroy(&sS);
 	
-	sem_destroy(&pathHunter);
-    sem_destroy(&pathThief);
-	sem_destroy(&smaugSleep);
-	sem_destroy(&smaugBusy);
+	sem_destroy(pathHunter);
+    sem_destroy(pathThief);
+	sem_destroy(smaugSleep);
+	sem_destroy(smaugBusy);
 	
     return 0;
 }
 
 
 void smaug(){
-	int huntersDefeated = 0, thievesDefeated = 0;
+	int sval, huntersDefeated = 0, thievesDefeated = 0;
 	
 	while(!smaugSatisfied){
+		
 		printf("Smaug is going to sleep\n");
-	
-		sem_wait(&smaugSleep);
+		
+		sem_wait(smaugSleep);
 	
 		printf("Smaug has been woken up\n");
 	
 		if(thievesOnPath > 0){//if there is a thief on the path it takes priority
 			printf("Smaug smells a thief\n");
-			sem_wait(&smaugBusy);
+			sem_post(pathThief);
+			sem_wait(smaugBusy);
 			printf("Smaug has finished a game\n");
 		}
 		else{//if there is a hunter
 			printf("Smaug smells a treasure hunter\n");
-			sem_wait(&smaugBusy);
+			sem_post(pathHunter);
+			sem_wait(smaugBusy);
 			printf("Smaug has finished a battle\n");
 		}
 		
@@ -177,16 +204,17 @@ void hunter(){
 	printf("Treasure hunter %d is travelling to the valley\n", myPID);
 	
 	pthread_mutex_lock(&hOP);
+	printf("inside hunter mutex\n");
 	huntersOnPath++;
 	pthread_mutex_unlock(&hOP);
 	
 	//tell Smaug he can wake up as there is a visitor
-	pthread_mutex_lock(&sS);
-	sem_post(&smaugSleep);
-	pthread_mutex_unlock(&sS);
+	//pthread_mutex_lock(&sS);
+	sem_post(smaugSleep);
+	//pthread_mutex_unlock(&sS);
 	
 	//here the thread now waits for Smaug to release it
-	sem_wait(&pathHunter);
+	sem_wait(pathHunter);
 	
 	
 	if(smaugSatisfied){
@@ -222,12 +250,12 @@ void hunter(){
 		printf("Smaug has defeated 4 treasure hunters\n");
 	}
 	//tell Smaug he can go back to sleep
-	sem_post(&smaugBusy);
+	sem_post(smaugBusy);
 	
 	return;
 }
 
-void theif(){
+void thief(){
 	int thievesDefeated = 0;
 	pid_t myPID = getpid();
 	
@@ -239,12 +267,12 @@ void theif(){
 	pthread_mutex_unlock(&tOP);
 	
 	//tell Smaug he can wake up as there is a visitor
-	pthread_mutex_lock(&sS);
-	sem_post(&smaugSleep);
-	pthread_mutex_unlock(&sS);
+	//pthread_mutex_lock(&sS);
+	sem_post(smaugSleep);
+	//pthread_mutex_unlock(&sS);
 	
 	//here the thread now waits for Smaug to release it
-	sem_wait(&pathThief);
+	sem_wait(pathThief);
 	
 	if(smaugSatisfied){
 		exit(0);
@@ -280,7 +308,7 @@ void theif(){
 	}
 	
 	//tell Smaug he can go back to sleep
-	sem_post(&smaugBusy);
+	sem_post(smaugBusy);
 	
 	return;
 }
