@@ -9,16 +9,9 @@
 #include <sys/stat.h>        /* For mode constants */
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include <string.h>
 
-int treasure = 30;
 int winProb; //probabilty a visitor will NOT be defeated, i.e. will win
-
-int maximumHunterInterval;
-int maximumThiefInterval;
-int huntersOnPath = 0;
-int thievesOnPath = 0;
-
-int smaugSatisfied = 0;//this is a bool but dumb c doesnt have them
 
 pthread_mutex_t hOP;
 pthread_mutex_t tOP;
@@ -29,14 +22,40 @@ sem_t* pathThief;
 sem_t* smaugSleep;
 sem_t* smaugBusy;
 
-void smaug();
-void hunter();
-void thief();
+void smaug(int* treasure, int* smaugSatisfied, int* huntersOnPath, int* thievesOnPath);
+void hunter(int* treasure, int* smaugSatisfied, int* huntersOnPath, int* huntersDefeated);
+void thief(int* treasure, int* smaugSatisfied, int* thievesOnPath, int* thievesDefeated);
+void* csm(size_t size);
 
 int main(){
-    int seed, nextHunterTime, nextThiefTime, i;
+    int maximumHunterInterval, maximumThiefInterval, seed, nextHunterTime, nextThiefTime, i;
     pid_t smaugpid, hunterpid, thiefpid;
     clock_t startTime, elapsedTime;
+	//initialising global mem to be shared between processes
+	int tr = 30;
+	int hunP = 0;
+	int thiP = 0;
+	int smS = 0;
+	int tD = 0;
+	int hD = 0;
+
+	int* huntersDefeated = csm(sizeof(int));
+	memcpy(huntersDefeated, &hD, sizeof(int));
+
+	int* thievesDefeated = csm(sizeof(int));
+	memcpy(thievesDefeated, &tD, sizeof(int));
+
+	int* treasure = csm(sizeof(int));
+	memcpy(treasure, &tr, sizeof(int));
+
+	int* huntersOnPath = csm(sizeof(int));
+	memcpy(huntersOnPath, &hunP, sizeof(int));
+	
+	int* thievesOnPath = csm(sizeof(int));
+	memcpy(thievesOnPath, &thiP, sizeof(int));
+	
+	int* smaugSatisfied = csm(sizeof(int));
+	memcpy(smaugSatisfied, &smS, sizeof(int));
 
 	pathHunter = sem_open("pH", O_CREAT, 0600, 0); 
 	pathThief = sem_open("pT", O_CREAT, 0600, 0);
@@ -80,7 +99,7 @@ int main(){
 	else if(smaugpid == 0){
 
 		//All work done by Smaug here
-		smaug();
+		smaug(treasure, smaugSatisfied, huntersOnPath, thievesOnPath);
 		exit(0);
 	}
 
@@ -96,9 +115,9 @@ int main(){
 	Smaug has no treasure
 	Smaug has 80 jewels
 	*/
-    while(!smaugSatisfied){ //while one of the exit conditions isnt met
+    while(!(*smaugSatisfied)){ //while one of the exit conditions isnt met
 		//calculates time since startTime initialized in seconds (microseconds*1000,000)
-        elapsedTime = (clock() - startTime)/CLOCKS_PER_SEC * 1000000;
+        elapsedTime = (clock() - startTime) /CLOCKS_PER_SEC;
 		if(elapsedTime >= nextHunterTime){
 			//generate new hunter here
 			if((hunterpid = fork()) < 0){
@@ -106,7 +125,7 @@ int main(){
 				abort();
 			}
 			else if(hunterpid == 0){
-				hunter();
+				hunter(treasure, smaugSatisfied, huntersOnPath, huntersDefeated);
 				exit(0);
 			}
 			//calculate how far in the future the next thief will spawn
@@ -119,7 +138,7 @@ int main(){
 				abort();
 			}
 			else if(thiefpid == 0){
-				thief();
+				thief(treasure, smaugSatisfied, thievesOnPath, thievesDefeated);
 				exit(0);
 			}
 			//calculate how far in the future the next thief will spawn
@@ -127,10 +146,10 @@ int main(){
 		}
     }
 	
-	for(i = 0; i < huntersOnPath; i++){
+	for(i = 0; i < *huntersOnPath; i++){
 		sem_post(pathHunter);
 	}
-	for(i = 0; i < thievesOnPath; i++){
+	for(i = 0; i < *thievesOnPath; i++){
 		sem_post(pathThief);
 	}
 	
@@ -146,11 +165,18 @@ int main(){
     return 0;
 }
 
+void* csm(size_t size){
+	int protection = PROT_READ | PROT_WRITE;
+	int visibility = MAP_ANONYMOUS | MAP_SHARED;
 
-void smaug(){
+	return mmap(NULL, size, protection, visibility, 0, 0);
+	
+}
+
+void smaug(int* treasure, int* smaugSatisfied, int* huntersOnPath, int* thievesOnPath){
 	int sval, huntersDefeated = 0, thievesDefeated = 0;
 	
-	while(!smaugSatisfied){
+	while(!(*smaugSatisfied)){
 		
 		printf("Smaug is going to sleep\n");
 		
@@ -158,7 +184,7 @@ void smaug(){
 	
 		printf("Smaug has been woken up\n");
 	
-		if(thievesOnPath > 0){//if there is a thief on the path it takes priority
+		if(*thievesOnPath > 0){//if there is a thief on the path it takes priority
 			printf("Smaug smells a thief\n");
 			sem_post(pathThief);
 			sem_wait(smaugBusy);
@@ -171,12 +197,12 @@ void smaug(){
 			printf("Smaug has finished a battle\n");
 		}
 		
-		if(treasure <= 0 && !smaugSatisfied){
-			smaugSatisfied = 1;
+		if(*treasure <= 0 && !(*smaugSatisfied)){
+			*smaugSatisfied = 1;
 			printf("Smaug has no more treasure\n");
 		}
-		else if(treasure >= 80 && !smaugSatisfied){
-			smaugSatisfied = 1;
+		else if(*treasure >= 80 && !(*smaugSatisfied)){
+			*smaugSatisfied = 1;
 			printf("Smaug has amassed 80 jewels in treasure\n");
 		}
 	}
@@ -185,16 +211,18 @@ void smaug(){
 }
 
 
-void hunter(){
-	int huntersDefeated = 0;
+void hunter(int* treasure, int* smaugSatisfied, int* huntersOnPath, int* huntersDefeated){
 	pid_t myPID = getpid();
 	
+	if(*smaugSatisfied){
+		exit(0);
+	}
+
 	printf("Treasure hunter %d wandering the valley\n", myPID);
 	printf("Treasure hunter %d is travelling to the valley\n", myPID);
 	
 	pthread_mutex_lock(&hOP);
-	printf("inside hunter mutex\n");
-	huntersOnPath++;
+	*huntersOnPath += 1;
 	pthread_mutex_unlock(&hOP);
 	
 	//tell Smaug he can wake up as there is a visitor
@@ -206,12 +234,12 @@ void hunter(){
 	sem_wait(pathHunter);
 	
 	
-	if(smaugSatisfied){
+	if(*smaugSatisfied){
 		exit(0);
 	}
 	
 	pthread_mutex_lock(&hOP);
-	huntersOnPath--;
+	*huntersOnPath -= 1;
 	pthread_mutex_unlock(&hOP);
 	
 	//fight smaug
@@ -219,23 +247,24 @@ void hunter(){
 	
 	if((rand()%100+1) < winProb){//if wins
 		printf("Treasure hunter %d has won and recieves treasure\n", myPID);
-		treasure -= 10;
-		if(treasure < 0){
-			treasure = 0;
+		*treasure -= 10;
+		if(*treasure < 0){
+			*treasure = 0;
 		}
 		printf("Smaug has been defeated by a treasure hunter\n");
-		printf("Smaug has lost some treasure, he now has %d jewels\n", treasure);
+		printf("Smaug has lost some treasure, he now has %d jewels\n", *treasure);
 	}
 	else{//else loses
-		huntersDefeated++;
+		*huntersDefeated += 1;
+		printf("\n hd = %d \n\n", *huntersDefeated);
 		printf("Treasure hunter %d has been defeated and pays the price\n", myPID);
-		treasure += 5;
+		*treasure += 5;
 		printf("Smaug has defeated a treasure hunter\n");
-		printf("Smaug has added to his treasure, he now has %d jewels\n", treasure);
+		printf("Smaug has added to his treasure, he now has %d jewels\n", *treasure);
 	}
 	
-	if(huntersDefeated >= 4){
-		smaugSatisfied = 1;
+	if(*huntersDefeated >= 4){
+		*smaugSatisfied = 1;
 		printf("Smaug has defeated 4 treasure hunters\n");
 	}
 	//tell Smaug he can go back to sleep
@@ -244,15 +273,18 @@ void hunter(){
 	return;
 }
 
-void thief(){
-	int thievesDefeated = 0;
+void thief(int* treasure, int* smaugSatisfied, int* thievesOnPath, int* thievesDefeated){
 	pid_t myPID = getpid();
 	
+	if(*smaugSatisfied){
+		exit(0);
+	}
+
 	printf("Thief %d wandering the valley\n", myPID);
 	printf("Thief %d is travelling to the valley\n", myPID);
 	
 	pthread_mutex_lock(&tOP);
-	thievesOnPath++;
+	*thievesOnPath += 1;
 	pthread_mutex_unlock(&tOP);
 	
 	//tell Smaug he can wake up as there is a visitor
@@ -263,12 +295,12 @@ void thief(){
 	//here the thread now waits for Smaug to release it
 	sem_wait(pathThief);
 	
-	if(smaugSatisfied){
+	if(*smaugSatisfied){
 		exit(0);
 	}
 	
 	pthread_mutex_lock(&tOP);
-	thievesOnPath--;
+	*thievesOnPath -= 1;
 	pthread_mutex_unlock(&tOP);
 	
 	//play with smaug
@@ -276,23 +308,24 @@ void thief(){
 	
 	if((rand()%100+1) < winProb){//if wins
 		printf("Thief %d has won and recieves treasure\n", myPID);
-		treasure -= 8;
-		if(treasure < 0){
-			treasure = 0;
+		*treasure -= 8;
+		if(*treasure < 0){
+			*treasure = 0;
 		}
 		printf("Smaug has been defeated by a thief\n");
-		printf("Smaug has lost some treasure, he now has %d jewels\n", treasure);
+		printf("Smaug has lost some treasure, he now has %d jewels\n", *treasure);
 	}
 	else{//else loses
-		thievesDefeated++;
+		*thievesDefeated += 1;
+		printf("\n td = %d \n\n",*thievesDefeated);
 		printf("Thief %d has been defeated and pays the price\n", myPID);
-		treasure += 20;
+		*treasure += 20;
 		printf("Smaug has defeated a thief\n");
-		printf("Smaug has added to his treasure, he now has %d jewels\n", treasure);
+		printf("Smaug has added to his treasure, he now has %d jewels\n", *treasure);
 	}
 	
-	if(thievesDefeated >= 3){
-		smaugSatisfied = 1;
+	if(*thievesDefeated >= 3){
+		*smaugSatisfied = 1;
 		printf("Smaug has defeated 3 thieves\n");
 	}
 	

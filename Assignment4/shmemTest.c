@@ -21,7 +21,7 @@ void* create_shared_memory(size_t size) {
 int main() {
   char* parent_message = "hello";  // parent process will write this message
   char* child_message = "goodbye"; // child process will then write this one
-
+  char* test = "this is a test";
   void* shmem = create_shared_memory(128);
 
   memcpy(shmem, parent_message, sizeof(parent_message));
