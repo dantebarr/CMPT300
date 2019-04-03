@@ -37,17 +37,6 @@ int main(){
     int seed, nextHunterTime, nextThiefTime, i;
     pid_t smaugpid, hunterpid, thiefpid;
     clock_t startTime, elapsedTime;
-	
-	
-	/*not working with fork()
-	//initialize semaphores
-	int pshared = 1; //this tells the semaphore to be shared accross processes not just threads
-	int seminitval = 0;
-	sem_init(&pathHunter, pshared, seminitval);
-	sem_init(&pathThief, pshared, seminitval);
-	sem_init(&smaugSleep, pshared, seminitval);
-	sem_init(&smaugBusy, pshared, seminitval);
-	*/
 
 	pathHunter = sem_open("pH", O_CREAT, 0600, 0); 
 	pathThief = sem_open("pT", O_CREAT, 0600, 0);
